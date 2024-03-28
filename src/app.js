@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 const port = process.env.PORT || 3000;
@@ -7,6 +8,9 @@ const Register = require("./models/register");
 require("./db/conn");
 const bcrypt =require("bcrypt");
 const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
+const auth = require("./auth/auth")
+
 
 
 
@@ -22,13 +26,14 @@ const partialsPath = path.join(__dirname,"../templates/partials")
 // App.use
 
 app.use(express.static(staticPath));
+app.use(cookieParser())
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 
 app.set("view engine", "hbs");
 app.set("views",viewsPath);
-hbs.registerPartials(partialsPath)
+hbs.registerPartials(partialsPath);
 
 
 
@@ -37,6 +42,11 @@ hbs.registerPartials(partialsPath)
 // Routes for the pages and post/get request
 app.get("",(req,res)=>{
     res.render("index")
+});
+app.get("/secret",auth,(req,res)=>{
+
+    // console.log(`This is cookie ${req.cookies.jwtCookie}`)
+    res.render("secret")
 });
 app.post("/register",async(req,res)=>{
 
@@ -56,12 +66,24 @@ app.post("/register",async(req,res)=>{
 
             // getFormData is our instance and Register is our collection.  jab b ham kisi instance k sath work kr rahy hon to ham 
             // methods() use krty hain for the sake of task we are going to perform
-            console.log("the success part" + getFormData)
+            console.log("the success part" + getFormData);
+
+
             const token = await getFormData.generateAuthToken();
             console.log("the token part " + token)
 
+            // use
+            res.cookie("jwtCookie",token,{
+                expires:new Date(Date.now()+30000),
+                httpOnly:true
+            });
+
             const formRegistered = await getFormData.save();
+
+
             console.log("the page part" + formRegistered);
+
+            
             res.status(201).render("index");
         }
     }catch(err){
@@ -71,6 +93,29 @@ app.post("/register",async(req,res)=>{
 })
 app.get("/register",(req,res)=>{
     res.render("register");
+});
+app.get("/logout",auth,async (req,res)=>{
+    try{
+        console.log("Logut Successfully");
+
+                            //--------------- For deleting only current cookie..
+        // req.user.tokens = req.user.tokens.filter((currElem)=>{
+        //     return currElem.token !== req.token
+        // })
+
+
+                            //--------------- for deleting all users
+        req.user.tokens =[];
+
+        
+        res.clearCookie("jwtCookie");
+        await req.user.save();
+
+    }catch(error){
+        res.status(400).send(error)
+    }
+
+    res.render("index");
 });
 app.get("/login", (req,res)=>{
     res.render("login")
@@ -84,10 +129,22 @@ try{
     const userEmail = await Register.findOne({email:email});
     // console.log(userEmail)
 
-    const compareHash = await bcrypt.compare(password, userEmail.password)
+    const compareHash = await bcrypt.compare(password, userEmail.password);
+
+    const token = await userEmail.generateAuthToken();
+    console.log(" this is login -------------- "+ token);
+
+    
+
 
     if(compareHash){
         res.status(201).render("index");
+        res.cookie("jwtCookie",token,{
+            expires:new Date(Date.now()+30000),
+            httpOnly:true,
+            // secure:true
+        });
+
     }else{
         res.send("invalid login")
     }
